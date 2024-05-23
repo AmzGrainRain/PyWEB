@@ -3,6 +3,7 @@ from os import path
 from http_server.server import Server
 from http_server.request import Request
 from http_server.response import Response, DefaultHeaders
+from http_server.http_status import HttpStatus
 
 DefaultHeaders['Cache-Control'] = 'no-cache'
 DefaultHeaders['Access-Control-Allow-Origin'] = 'same-origin'
@@ -15,26 +16,10 @@ current_dir = path.dirname(path.abspath(__file__))
 app.set_static_dir(path.join(current_dir, 'www'))
 
 
-@app.get('/login')
+@app.post('/login')
 def home(req: Request, res: Response) -> None:
-    if req.query_string is None:
-        res.send_html('没传数据')
-        return
-
-    if 'id' not in req.query_string.keys():
-        res.send_html('缺少必要参数')
-        return
-
-    if 'password' not in req.query_string.keys():
-        res.send_html('缺少必要参数')
-        return
-
-    if req.query_string['id'] == 'khlee' and req.query_string['password'] == '123':
-        res.send_html('登录成功')
-        return
-    else:
-        res.send_html('登录失败')
-        return
+    print(req.body)
 
 
 app.run()
+

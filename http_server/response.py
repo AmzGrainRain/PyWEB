@@ -10,6 +10,10 @@ from http_server.mime import MimeList
 DefaultHeaders: dict[str, str] = {}
 
 
+def get_mime(ext_name: str, encoding: str = 'utf-8') -> str:
+    return f'{MimeList[ext_name]}; charset=utf-8' if ext_name in MimeList.keys() else 'text/plain; charset=utf-8'
+
+
 class Response:
     # socket 连接实例指针（万不可不要在此处关闭 socket）
     __conn: socket.socket
@@ -134,7 +138,7 @@ class Response:
         self.__cached_header = None
         return self
 
-    def send_message_without_data(self):
+    def send(self):
         """
         直接发送响应报文而不携带数据
         :return: 链式调用实例
@@ -186,24 +190,24 @@ class Response:
         self.__status = HttpStatus.OK
 
         # 文件扩展名
-        ext_name: str = f'.{path.splitext(file_path)[1]}'
+        ext_name: str = f'{path.splitext(file_path)[1]}'
         # 文件大小（字节）
         file_size: int = os.path.getsize(file_path)
         # 文件分块发送的块大小（MB）
         chunk_size: int = 1024 * 1024
 
         # 文件类型
-        self.__headers['Content-Type'] = MimeList[ext_name] if ext_name in MimeList.keys() else 'text/plain'
+        self.__headers['Content-Type'] = get_mime(ext_name)
         # 文件大小
         self.__headers['Content-Length'] = file_size
-        # 告诉客户端请求结束后 不要立即关闭 http 连接（http 长连接支持）
-        self.__headers['Connection'] = 'Keep-Alive'
+        # http 长连接支持
+        self.__headers['Connection'] = 'keep-alive'
+        # 先发送不携带文件数据的响应头
+        self.send()
 
         try:
             # 以二进制读模式打开文件, 无需关心文件类型和编码
             file: BinaryIO = open(file_path, 'rb')
-            # 先发送不携带文件数据的响应头
-            self.send_message_without_data()
             # 分块发送文件数据给客户端
             while True:
                 # 读取 1MB

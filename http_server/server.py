@@ -24,34 +24,60 @@ class Server:
         self.__get = {}
         self.__post = {}
 
-    def __process_static(self, req_path: str, res: Response):
+    def __process_static(self, req_path: str, res: Response) -> None:
+        req_path = req_path.lstrip('/')
         file_path: str = os.path.join(self.__static_dir, req_path)
 
         if os.path.isdir(file_path):
             file_path = os.path.join(file_path, 'index.html')
 
         if not os.path.exists(file_path):
-            res.set_status(HttpStatus.Not_Found).end()
+            res.set_status(HttpStatus.Not_Found).send().close()
             return
 
         res.send_file(file_path)
 
     def __process_get(self, req: Request, res: Response) -> None:
-        if req.path not in self.__post.keys():
+        func: Callable[[Request, Response], None] | None = self.__get.get(req.path)
+        if func is None:
             self.__process_static(req.path, res)
             return None
-        self.__post[req.path](req, res)
+        func(req, res)
 
     def __process_post(self, req: Request, res: Response) -> None:
-        if req.path not in self.__post.keys():
+        func: Callable[[Request, Response], None] | None = self.__post.get(req.path)
+        if func is None:
             res.set_status(HttpStatus.Not_Found)
             return None
-        self.__post[req.path](req, res)
+        func(req, res)
+
+    def __process_request(self, conn: socket.socket) -> None:
+        try:
+            req = Request(conn)
+            res = Response(conn)
+
+            if req.method == 'GET':
+                self.__process_get(req, res)
+                return
+
+            if req.method == 'POST':
+                self.__process_post(req, res)
+                return
+
+            res.set_status(HttpStatus.Bad_Request).send().close()
+
+        except Exception as err:
+            print(err)
+            try:
+                if not conn.recv(1) or conn.fileno() == -1:
+                    return
+            except Exception as inner_err:
+                print(inner_err)
+                return
+            Response(conn).set_status(HttpStatus.Internal_Server_Error).send().close()
 
     def set_static_dir(self, path: str):
         self.__static_dir = path
-        print(path)
-
         return self
 
     def run(self) -> None:
@@ -60,18 +86,8 @@ class Server:
         sock_conn.listen(1)
 
         while True:
-            conn, addr = sock_conn.accept()
-            req = Request(conn)
-            res = Response(conn)
-
-            if req.method == 'GET':
-                self.__process_get(req, res)
-                continue
-
-            if req.method == 'POST':
-                self.__process_post(req, res)
-                continue
-
+            conn, _addr = sock_conn.accept()
+            self.__process_request(conn)
             conn.close()
 
     def get(self, path: str):
@@ -79,7 +95,9 @@ class Server:
             @functools.wraps(func)
             def inner(_req: Request, _res: Response):
                 self.__get[path] = func
+
             return inner
+
         return decorator
 
     def post(self, path: str):
@@ -87,5 +105,7 @@ class Server:
             @functools.wraps(func)
             def inner(_req: Request, _res: Response):
                 self.__post[path] = func
+
             return inner
+
         return decorator
